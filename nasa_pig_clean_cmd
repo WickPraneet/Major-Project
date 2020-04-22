@@ -1,0 +1,859 @@
+
+******************nasa clean data using pig***********************
+199.72.81.55 - - [01/Jul/1995:00:00:01 -0400] "GET /history/apollo/ HTTP/1.0" 200 6245
+unicomp6.unicomp.net - - [01/Jul/1995:00:00:06 -0400] "GET /shuttle/countdown/ HTTP/1.0" 200 3985
+199.120.110.21 - - [01/Jul/1995:00:00:09 -0400] "GET /shuttle/missions/sts-73/mission-sts-73.html HTTP/1.0" 200 4085
+burger.letters.com - - [01/Jul/1995:00:00:11 -0400] "GET /shuttle/countdown/liftoff.html HTTP/1.0" 304 0
+199.120.110.21 - - [01/Jul/1995:00:00:11 -0400] "GET /shuttle/missions/sts-73/sts-73-patch-small.gif HTTP/1.0" 200 4179
+burger.letters.com - - [01/Jul/1995:00:00:12 -0400] "GET /images/NASA-logosmall.gif HTTP/1.0" 304 0
+burger.letters.com - - [01/Jul/1995:00:00:12 -0400] "GET /shuttle/countdown/video/livevideo.gif HTTP/1.0" 200 0
+205.212.115.106 - - [01/Jul/1995:00:00:12 -0400] "GET /shuttle/countdown/countdown.html HTTP/1.0" 200 3985
+d104.aa.net - - [01/Jul/1995:00:00:13 -0400] "GET /shuttle/countdown/ HTTP/1.0" 200 3985
+129.94.144.152 - - [01/Jul/1995:00:00:13 -0400] "GET / HTTP/1.0" 200 7074
+__________________________________________________________________________________________
+a = load '/home/hduser/feb_22_nasa/NASA_access_log_Jul95' using PigStorage(' ');
+b = foreach a generate $0,$6;
+c = foreach b generate REPLACE($0,'([a-zA-Z\\s]+)','na');
+d = filter c BY NOT ($0 matches '.*na.*'); 
+g = filter d BY ($1 matches '.*html.*');
+grp = group d by $0;
+ord = order d by $0 desc;
+limc = limit ord 20; 
+dump limc;
+
+________________________________________________________________________________________
+  *************************user Session idetification **********************
+register /home/hduser/Shubham/data/datafu-1.2.0.jar;
+register /home/hduser/Shubham/data/joda-time-1.6.jar;
+DEFINE UnixToISO org.apache.pig.piggybank.evaluation.datetime.convert.UnixToISO();
+
+DEFINE VAR datafu.pig.stats.VAR();
+
+DEFINE Sessionize datafu.pig.sessions.Sessionize('30m');
+
+DEFINE Median datafu.pig.stats.StreamingMedian();
+
+DEFINE Quantile datafu.pig.stats.StreamingQuantile('0.9','0.95');
+______________________________________________________________________________________________
+a = load '/home/hduser/Shubham/data/200ns' using PigStorage(' ') AS (memberId:chararray, space:chararray, time1:chararray, zone:chararray,httptype:chararray,url:chararray,https:chararray,resp:chararray,size:chararray);
+b = foreach a generate memberId,ToUnixTime(ToDate(SUBSTRING(time1,1,21),'dd/MMM/yyyy:HH:mm:ss')) as time,ToDate(SUBSTRING(time1,1,21),'dd/MMM/yyyy:HH:mm:ss') as originaltime,url; 
+pv = FOREACH b GENERATE time, memberId,url,originaltime;
+pv_sessionized = FOREACH (GROUP pv BY memberId) { 
+  ordered = ORDER pv BY time;
+  GENERATE FLATTEN(Sessionize(ordered))
+           AS (time,memberId,url,originaltime,sessionId);
+};
+test = group pv_sessionized by (sessionId,memberId);
+
+test1 = foreach test generate (MAX(pv_sessionized.time) - MIN(pv_sessionized.time))
+              as session_length,group,pv_sessionized.url,pv_sessionized.originaltime;
+
+dump test1;
+____________________________________________________________________________________________________
+{session_length: long,group: (sessionId: chararray,memberId: chararray),{(url: chararray)},{(originaltime: datetime)}}			  
+(1239,(67e8ff52-7846-4f94-9e7e-e86d108b5973,204.185.80.201),{(/shuttle/missions/sts-70/mission-sts-70.html),(/history/astp/astp.html),(/history/history.html),(/ksc.html)},{(1995-07-27T22:01:53.000+05:30),(1995-07-27T21:53:04.000+05:30),(1995-07-27T21:52:29.000+05:30),(1995-07-27T21:41:14.000+05:30)})
+_______________________________________________________________________________________________________________
+*******************path completion****************
+c = filter b by SUBSTRING(url,1,11) == 'facilities';
+(130.181.3.198,1995-07-28T12:27:37.000+05:30,/facilities/oc.html)
+(158.111.42.17,1995-07-28T12:28:35.000+05:30,/facilities/lc39a.html)
+(130.181.3.198,1995-07-28T12:28:55.000+05:30,/facilities/vpf.html)
+(130.181.3.198,1995-07-28T12:29:30.000+05:30,/facilities/opf.html)
+
+c = filter b by SUBSTRING(url,1,31) == 'shuttle/missions/sts-71/movies';
+(130.163.126.12,1995-07-28T10:25:36.000+05:30,/shuttle/missions/sts-71/movies/movies.html)
+(143.251.26.181,1995-07-28T11:26:44.000+05:30,/shuttle/missions/sts-71/movies/movies.html)
+_____________________________________________________________________________________________________________________
+********************************idetification of level of pages*******************************
+grunt> v = FOREACH a GENERATE REGEX_EXTRACT(url,'^\\D([a-z]*\\D[a-z0-9]*\\D[a-z]+)\\D*',1);
+grunt> diss = distinct v;
+grunt> dump diss;
+(mdss)
+(ksc.html)
+(.ksc.html)
+(mdss/srqa)
+(statistics)
+(~downs/home)
+(mdss/ped/acs)
+(welcome.html)
+(home/faq.html)
+(mdss/srqa/qpa)
+(msfc/team/jsc)
+(biomed/lan/lan)
+(facts/faq.html)
+(home/whats-new)
+(msfc/crew/crew)
+(msfc/crew/food)
+(msfc/team/nasa)
+(whats-new.html)
+(biomed/env.html)
+(facts/about_ksc)
+(history//apollo)
+(msfc/astro_home)
+(msfc/other.html)
+(persons/nasa-cm)
+(biomed/fire/fire)
+(facts/facts.html)
+(facts/faq01.html)
+(facts/faq02.html)
+(facts/faq03.html)
+(facts/faq04.html)
+(facts/faq05.html)
+(facts/faq06.html)
+(facts/faq07.html)
+(facts/faq08.html)
+(facts/faq09.html)
+(facts/faq10.html)
+(facts/faq11.html)
+(facts/faq12.html)
+(facts/faq13.html)
+(history/apollo/a)
+(home/guided-tour)
+(msfc/crew/trivia)
+(msfc/crew/vangen)
+(shuttle/missions)
+(biomed/intro.html)
+(facts/wais-readme)
+(history/apollo/as)
+(history/apollo/sa)
+(history/astp/astp)
+(home/welcome.html)
+(msfc/crew/patches)
+(msfc/crew/wannabe)
+(biomed/soils/soils)
+(facilities/hq.html)
+(facilities/lf.html)
+(facilities/oc.html)
+(facts/internet/url)
+(history/apollo/pad)
+(history/mercury/ma)
+(history/mercury/mr)
+(msfc/crew/jernigan)
+(msfc/crew/lawrence)
+(software/winvn/faq)
+(biomed/program.html)
+(biomed/threat/tande)
+(facilities/cif.html)
+(facilities/hmf.html)
+(facilities/lcc.html)
+(facilities/lps.html)
+(facilities/mlp.html)
+(facilities/opf.html)
+(facilities/osb.html)
+(facilities/prf.html)
+(facilities/slf.html)
+(facilities/vab.html)
+(facilities/vpf.html)
+(facts/internet/html)
+(msfc/crew/astronaut)
+(payloads/cm-systems)
+(persons/people.html)
+(software/techdoc/td)
+(base-ops/procurement)
+(biomed/threat/indigo)
+(biomed/threat/plants)
+(facilities/cdsc.html)
+(facilities/letf.html)
+(facilities/mila.html)
+(facilities/phsf.html)
+(facilities/sspf.html)
+(facilities/tour.html)
+(facts/space_congress)
+(history/history.html)
+(home/internet-search)
+(msfc/onboard/onboard)
+(persons/astronauts/a)
+(persons/astronauts/m)
+(persons/astronauts/u)
+(shuttle/missions/sts)
+(software/winvn/winvn)
+(statistics/1995/bkup)
+(biomed/threat/animals)
+(biomed/threat/manatee)
+(facilities/lc39a.html)
+(facilities/press.html)
+(facilities/saef2.html)
+(facts/internet/bdgtti)
+(history/apollo.apollo)
+(history/apollo/apollo)
+(history/gemini/gemini)
+(history/skylab/skylab)
+(mdss/shuttleproc.html)
+(mdss/stationproc.html)
+(shuttle/countdown/lps)
+(software/webadmin/faq)
+(software/winvn/brydon)
+(biomed/climate/airqual)
+(biomed/climate/climate)
+(biomed/history/history)
+(shuttle/countdown/tour)
+(shuttle/technology/sts)
+(biomed/vegetation/scrub)
+(facilities/crawler.html)
+(history/mercury/mercury)
+(home/internet-directory)
+(shuttle/countdown/count)
+(shuttle/countdown/video)
+(biomed/glossary/glossary)
+(biomed/wetlands/wetlands)
+(facilities/canister.html)
+(msfc/description/shuttle)
+(shuttle/countdown/launch)
+(shuttle/countdown/ocount)
+(software/viewers/viewers)
+(software/winvn/userguide)
+(biomed/vegetation/aquatic)
+(biomed/vegetation/hammock)
+(facilities/spaceport.html)
+(msfc/description/spacelab)
+(msfc/description/starview)
+(payloads/processing/ppart)
+(shuttle/countdown/liftoff)
+(shuttle/missions/missions)
+(biomed/vegetation/teresveg)
+(facilities/crawlerway.html)
+(shuttle/missions/rollbacks)
+(shuttle/resources/orbiters)
+(statistics/statistics.html)
+(shuttle/countdown/countdown)
+(biomed/vegetation/vegetation)
+(msfc/description/description)
+(payloads/processing/paylproc)
+(procurement/procurement.html)
+()
+_____________________________________________________________________________________________________________________
+- tree structure for path completion  
+  1) A - shuttle
+  2) B - statistics
+  3) c - history
+  4) D - software
+  5) E - msfc
+  6) F - biomed
+  7) G - persons
+  8) H - mdss
+  9) I - payloads
+ 10) J - bas-ops
+ 11) K - facts
+ 12) L - facilities
+ 13) M - ksc
+ 14) N - home
+ 15) O - whats
+ 16) P - welcome
+ 17) Q - procurement
+______________________________________
+ **************uniq url count **********************************
+hduser@castek-To-be-filled-by-O-E-M:~$ awk '{print $5 }' 200ns | sort | uniq -c | sort -h -r 
+  11845 /ksc.html
+   4724 /shuttle/missions/missions.html
+   3480 /shuttle/countdown/liftoff.html
+   3107 /shuttle/missions/sts-70/mission-sts-70.html
+   2969 /shuttle/missions/sts-71/mission-sts-71.html
+   2814 /shuttle/missions/sts-71/images/images.html
+   2513 /history/apollo/apollo.html
+   2368 /history/apollo/apollo-13/apollo-13.html
+   2215 /history/history.html
+   1712 /shuttle/countdown/countdown.html
+   1439 /shuttle/missions/sts-69/mission-sts-69.html
+   1431 /shuttle/technology/sts-newsref/stsref-toc.html
+   1355 /shuttle/missions/sts-70/images/images.html
+   1197 /shuttle/missions/sts-70/movies/movies.html
+   1071 /shuttle/missions/sts-71/movies/movies.html
+   1017 /facilities/lc39a.html
+    988 /history/apollo/apollo-13/apollo-13-info.html
+    894 /history/apollo/apollo-11/apollo-11.html
+    859 /software/winvn/winvn.html
+    764 /shuttle/countdown/lps/fr.html
+    672 /shuttle/technology/sts-newsref/sts_asm.html
+    670 /shuttle/resources/orbiters/atlantis.html
+    653 /shuttle/resources/orbiters/discovery.html
+    517 /shuttle/missions/51-l/mission-51-l.html
+    516 /shuttle/technology/sts-newsref/sts-lcc.html
+    507 /facilities/tour.html
+    501 /history/mercury/mercury.html
+    484 /shuttle/resources/orbiters/challenger.html
+    466 /shuttle/resources/orbiters/endeavour.html
+    465 /whats-new.html
+    455 /history/apollo/apollo-1/apollo-1.html
+    441 /shuttle/missions/sts-63/mission-sts-63.html
+    425 /facts/about_ksc.html
+    421 /shuttle/countdown/tour.html
+    418 /shuttle/missions/sts-73/mission-sts-73.html
+    395 /history/gemini/gemini.html
+    394 /shuttle/missions/sts-67/mission-sts-67.html
+    381 /shuttle/resources/orbiters/columbia.html
+    375 /shuttle/missions/sts-68/mission-sts-68.html
+    350 /shuttle/missions/sts-67/images/images.html
+    345 /shuttle/missions/sts-78/mission-sts-78.html
+    326 /shuttle/missions/sts-66/mission-sts-66.html
+    318 /shuttle/missions/sts-74/mission-sts-74.html
+    298 /facilities/mlp.html
+    286 /shuttle/technology/sts-newsref/sts_overview.html
+    280 /shuttle/missions/sts-1/mission-sts-1.html
+    278 /history/apollo/apollo-17/apollo-17.html
+    274 /facilities/vab.html
+    271 /shuttle/missions/51-l/51-l-info.html
+    266 /history/skylab/skylab.html
+    264 /facts/facts.html
+    252 /shuttle/resources/orbiters/orbiters.html
+    250 /shuttle/missions/sts-68/ksc-srl-image.html
+    249 /shuttle/missions/sts-72/mission-sts-72.html
+    234 /history/apollo/apollo-1/apollo-1-info.html
+    230 /shuttle/technology/sts-newsref/srb.html
+    226 /facilities/lcc.html
+    224 /mdss/MDSS.html
+    222 /shuttle/technology/sts-newsref/sts_coord.html
+    221 /shuttle/countdown/count.html
+    216 /shuttle/missions/sts-71/sts-71-info.html
+    199 /procurement/procurement.html
+    198 /shuttle/missions/sts-65/mission-sts-65.html
+    197 /shuttle/missions/100th.html
+    196 /history/apollo/apollo-14/apollo-14.html
+    195 /shuttle/resources/orbiters/enterprise.html
+    193 /shuttle/technology/sts-newsref/sts_mes.html
+    192 /history/astp/astp.html
+    187 /history/apollo/apollo-10/apollo-10.html
+    180 /history/apollo/apollo-7/apollo-7.html
+    179 /shuttle/missions/sts-69/sts-69-info.html
+    173 /shuttle/technology/sts-newsref/sts-mps.html
+    172 /shuttle/technology/sts-newsref/et.html
+    171 /shuttle/missions/sts-70/woodpecker.html
+    171 /history/mercury/mr-3/mr-3.html
+    168 /history/apollo/apollo-8/apollo-8.html
+    164 /shuttle/missions/61-c/mission-61-c.html
+    161 /facilities/opf.html
+    155 /facts/faq04.html
+    152 /shuttle/missions/sts-75/mission-sts-75.html
+    146 /shuttle/technology/sts-newsref/spacelab.html
+    146 /shuttle/missions/sts-70/sts-70-info.html
+    143 /shuttle/missions/sts-64/mission-sts-64.html
+    141 /history/apollo/apollo-12/apollo-12.html
+    138 /shuttle/technology/sts-newsref/sts-jsc-comm.html
+    133 /history/apollo/apollo-11/apollo-11-info.html
+    129 /shuttle/technology/sts-newsref/mission_profile.html
+    128 /shuttle/technology/sts-newsref/sts-cron.html
+    128 /shuttle/missions/sts-62/mission-sts-62.html
+    126 /facts/faq12.html
+    125 /history/apollo/apollo-9/apollo-9.html
+    123 /statistics/statistics.html
+    123 /shuttle/technology/sts-newsref/stsover-launch.html
+    116 /shuttle/missions/sts-77/mission-sts-77.html
+    116 /shuttle/missions/sts-59/mission-sts-59.html
+    115 /shuttle/technology/sts-newsref/sts_egress.html
+    115 /history/apollo/apollo-5/apollo-5.html
+    115 /history/apollo/apollo-16/apollo-16.html
+    113 /shuttle/missions/sts-76/mission-sts-76.html
+    112 /shuttle/missions/sts-71/sts-71-day-03-highlights.html
+    112 /history/apollo/apollo-4/apollo-4.html
+    110 /history/apollo/apollo-sa.html
+    108 /shuttle/missions/sts-26/mission-sts-26.html
+    108 /msfc/astro_home.html
+    107 /persons/nasa-cm/jmd.html
+    106 /shuttle/missions/rollbacks.html
+    105 /shuttle/technology/sts-newsref/sts-av.html
+    105 /payloads/cm-systems.html
+    105 /history/apollo/apollo-15/apollo-15.html
+    104 /shuttle/technology/sts-newsref/stsover.html
+    102 /shuttle/missions/sts-71/sts-71-day-11-highlights.html
+    101 /facilities/slf.html
+    100 /history/mercury/ma-6/ma-6.html
+     98 /facilities/crawler.html
+     97 /history/mercury/mr-4/mr-4.html
+     96 /shuttle/missions/sts-71/sts-71-day-04-highlights.html
+     96 /shuttle/missions/sts-71/sts-71-day-01-highlights.html
+     93 /shuttle/missions/sts-49/mission-sts-49.html
+     92 /statistics/1995/Jul/Jul95.html
+     91 /shuttle/countdown/lps/osr/osr.html
+     91 /history/apollo/as-201/as-201.html
+     91 /history/apollo/apollo-17/apollo-17-info.html
+     90 /shuttle/missions/61-b/mission-61-b.html
+     88 /shuttle/technology/sts-newsref/sts-apu.html
+     88 /history/apollo/apollo-6/apollo-6.html
+     88 /facilities/spaceport.html
+     86 /shuttle/missions/sts-71/sts-71-day-08-highlights.html
+     86 /ksc.html"
+     85 /shuttle/missions/41-d/mission-41-d.html
+     84 /shuttle/technology/sts-newsref/stsover-prep.html
+     84 /history/gemini/gemini-3/gemini-3.html
+     83 /history/mercury/ma-9/ma-9.html
+     82 /ii/gemini-xii.html
+     77 /shuttle/missions/sts-27/mission-sts-27.html
+     77 /facts/faq10.html
+     76 /history/mercury/ma-7/ma-7.html
+     75 /shuttle/technology/sts-newsref/sts-eps.html
+     74 /shuttle/technology/sts-newsref/centers.html
+     74 /shuttle/missions/sts-9/mission-sts-9.html
+     74 /shuttle/missions/sts-71/sts-71-day-02-highlights.html
+     74 /shuttle/missions/sts-2/mission-sts-2.html
+     72 /shuttle/technology/sts-newsref/sts-gnnc.html
+     72 /shuttle/missions/sts-70/sts-70-day-01-highlights.html
+     71 /shuttle/missions/51-j/mission-51-j.html
+     70 /shuttle/missions/sts-71/sts-71-day-05-highlights.html
+     69 /software/winvn/faq/WINVNFAQ-Contents.html
+     69 /shuttle/missions/sts-71/sts-71-day-06-highlights.html
+     69 /shuttle/countdown/countdown70.html
+     68 /shuttle/missions/sts-7/mission-sts-7.html
+     67 /shuttle/missions/sts-71/sts-71-day-09-highlights.html
+     67 /shuttle/missions/sts-71/sts-71-day-07-highlights.html
+     67 /shuttle/missions/sts-61/mission-sts-61.html
+     65 /shuttle/missions/sts-34/mission-sts-34.html
+     64 /shuttle/technology/sts-newsref/sts-ovcomm.html
+     64 /shuttle/missions/sts-73/sts-73-info.html
+     64 /shuttle/missions/sts-37/mission-sts-37.html
+     63 /shuttle/missions/sts-60/mission-sts-60.html
+     63 /shuttle/missions/51-c/mission-51-c.html
+     63 /history/skylab/skylab-2.html
+     62 /shuttle/missions/61-a/mission-61-a.html
+     61 /shuttle/technology/sts-newsref/sts_sys.html
+     61 /shuttle/missions/41-b/mission-41-b.html
+     61 /shuttle/countdown/lps/mstr/mstr.html
+     60 /shuttle/missions/sts-6/mission-sts-6.html
+     59 /shuttle/technology/sts-newsref/stsover-missions.html
+     59 /shuttle/missions/sts-3/mission-sts-3.html
+     59 /history/skylab/skylab-4.html
+     59 /history/mercury/ma-8/ma-8.html
+     58 /shuttle/technology/sts-newsref/sts-inst.html
+     58 /history/gemini/gemini-vii/gemini-vii.html
+     58 /history/gemini/gemini-4/gemini-4.html
+     57 /software/winvn/userguide/wvnguide.html
+     57 /history/gemini/gemini-viii/gemini-viii.html
+     56 /shuttle/missions/sts-71/sts-71-day-10-highlights.html
+     56 /shuttle/missions/sts-35/mission-sts-35.html
+     56 /shuttle/missions/51-f/mission-51-f.html
+     56 /history/skylab/skylab-1.html
+     56 /history/apollo/apollo-8/apollo-8-info.html
+     55 /shuttle/technology/sts-newsref/sts-rhc.html
+     55 /shuttle/countdown/lps/aa/aa.html
+     54 /shuttle/missions/51-g/mission-51-g.html
+     54 /shuttle/countdown/launch-team.html
+     54 /history/apollo/apollo-14/apollo-14-info.html
+     53 /shuttle/technology/sts-newsref/sts-oms.html
+     53 /shuttle/missions/sts-8/mission-sts-8.html
+     53 /shuttle/missions/sts-57/mission-sts-57.html
+     53 /history/gemini/gemini-v/gemini-v.html
+     51 /shuttle/missions/51-b/mission-51-b.html
+     51 /shuttle/missions/41-c/mission-41-c.html
+     50 /shuttle/missions/41-g/mission-41-g.html
+     50 /history/gemini/gemini-1/gemini-1.html
+     49 /shuttle/missions/51-a/mission-51-a.html
+     49 /history/apollo/as-202/as-202.html
+     48 /shuttle/technology/sts-newsref/sts-jsc.html
+     48 /shuttle/resources/orbiters/pathfinder.html
+     48 /shuttle/missions/sts-70/sts-70-day-02-highlights.html
+     48 /facts/faq07.html
+     47 /shuttle/missions/sts-5/mission-sts-5.html
+     47 /shuttle/missions/sts-4/mission-sts-4.html
+     47 /shuttle/missions/sts-29/mission-sts-29.html
+     47 /shuttle/missions/sts-28/mission-sts-28.html
+     47 /shuttle/missions/51-d/mission-51-d.html
+     46 /shuttle/technology/sts-newsref/sts_eclss.html
+     46 /shuttle/missions/51-i/mission-51-i.html
+     46 /history/apollo/sa-1/sa-1.html
+     46 /facilities/oc.html
+     45 /shuttle/technology/sts-newsref/sts-rcs.html
+     45 /history/gemini/gemini-vi-a/gemini-vi-a.html
+     45 /history/apollo/as-203/as-203.html
+     44 /shuttle/technology/sts-newsref/sts-subs.html
+     44 /shuttle/technology/sts-newsref/carriers.html
+     44 /shuttle/missions/sts-38/mission-sts-38.html
+     44 /shuttle/missions/sts-30/mission-sts-30.html
+     44 /history/gemini/gemini-x/gemini-x.html
+     43 /shuttle/missions/sts-41/mission-sts-41.html
+     42 /shuttle/missions/sts-74/sts-74-info.html
+     42 /history/apollo/apollo-12/apollo-12-info.html
+     40 /mdss/stationproc.html
+     40 /history/skylab/skylab-3.html
+     39 /shuttle/missions/sts-56/mission-sts-56.html
+     39 /shuttle/missions/sts-40/mission-sts-40.html
+     39 /shuttle/missions/sts-33/mission-sts-33.html
+     39 /history/gemini/gemini-ix-a/gemini-ix-a.html
+     38 /shuttle/missions/sts-55/mission-sts-55.html
+     38 /shuttle/missions/sts-32/mission-sts-32.html
+     38 /shuttle/missions/sts-31/mission-sts-31.html
+     38 /shuttle/countdown/lps/c-5-6/c-5-6.html
+     38 /history/apollo/apollo-10/apollo-10-info.html
+     38 /facilities/lps.html
+     37 /shuttle/technology/sts-newsref/sts-acronyms.html
+     37 /shuttle/missions/sts-63/sts-63-info.html
+     36 /welcome.html
+     36 /shuttle/missions/sts-70/sts-70-day-08-highlights.html
+     36 /shuttle/missions/sts-54/mission-sts-54.html
+     36 /shuttle/missions/sts-36/mission-sts-36.html
+     34 /shuttle/technology/sts-newsref/sts-eclss-wcl.html
+     34 /shuttle/resources/orbiters/mpta-098.html
+     34 /shuttle/missions/sts-43/mission-sts-43.html
+     34 /facilities/mila.html
+     33 /statistics/1995/Jun/Jun95.html
+     33 /shuttle/missions/sts-51/mission-sts-51.html
+     33 /shuttle/missions/sts-50/mission-sts-50.html
+     33 /msfc/onboard/onboard.html
+     32 /shuttle/missions/sts-70/sts-70-day-04-highlights.html
+     32 /persons/nasa-cm/mtd.html
+     32 /history/gemini/gemini-xi/gemini-xi.html
+     31 /shuttle/missions/sts-47/mission-sts-47.html
+     31 /shuttle/countdown/lps/omr/omr.html
+     31 /shuttle/countdown/lps/ab/ab.html
+     31 /facts/faq11.html
+     30 /shuttle/technology/sts-newsref/sts-msfc.html
+     30 /shuttle/missions/sts-53/mission-sts-53.html
+     30 /shuttle/missions/sts-45/mission-sts-45.html
+     30 /history/gemini/gemini-xii/gemini-xii-info.html
+     30 /facilities/crawlerway.html
+     29 /statistics/1995/Jun/Jun95_archive.html
+     29 /shuttle/missions/sts-70/sts-70-day-07-highlights.html
+     29 /shuttle/missions/sts-39/mission-sts-39.html
+     29 /shuttle/countdown/lps/c-1/c-1.html
+     28 /shuttle/technology/sts-newsref/sts-caws.html
+     28 /history/apollo/pad-abort-test-1/pad-abort-test-1.html
+     28 /history/apollo/apollo-7/apollo-7-info.html
+     28 /facts/faq01.html
+     27 /history/gemini/gemini-1/gemini-1-info.html
+     27 /biomed/intro.html
+     26 /shuttle/missions/sts-52/mission-sts-52.html
+     26 /shuttle/missions/sts-1/sts-1-info.html
+     26 /shuttle/countdown/lps/bkup-intg/bkup-intg.html
+     26 /history/apollo/apollo-16/apollo-16-info.html
+     26 /facilities/press.html
+     25 /shuttle/technology/sts-newsref/sts-lc39.html
+     25 /shuttle/technology/sts-newsref/sts-gear.html
+     25 /shuttle/missions/sts-78/sts-78-info.html
+     25 /history/gemini/gemini-3/gemini-3-info.html
+     24 /statistics/1995/bkup/Mar95_full.html
+     24 /shuttle/missions/sts-70/sts-70-day-06-highlights.html
+     24 /shuttle/missions/sts-70/sts-70-day-05-highlights.html
+     24 /shuttle/missions/sts-70/sts-70-day-03-highlights.html
+     24 /shuttle/missions/sts-58/mission-sts-58.html
+     24 /shuttle/missions/sts-44/mission-sts-44.html
+     24 /ksc.html/
+     23 /shuttle/missions/sts-57/sts-57-info.html
+     23 /history/apollo/apollo-9/apollo-9-info.html
+     23 /facilities/sspf.html
+     22 /software/viewers/viewers.html
+     22 /shuttle/technology/sts-newsref/sts-eclss-airlock.html
+     22 /shuttle/missions/sts-48/mission-sts-48.html
+     22 /shuttle/countdown/lps/c-11-12/c-11-12.html
+     22 /history/gemini/gemini-2/gemini-2.html
+     22 /history/apollo/sa-10/sa-10.html
+     22 /history/apollo/a-001/a-001.html
+     21 /shuttle/missions/sts-75/sts-75-info.html
+     21 /shuttle/missions/sts-70/sts-70-day-09-highlights.html
+     21 /shuttle/missions/sts-46/mission-sts-46.html
+     21 /facilities/hq.html
+     20 /shuttle/countdown/lps/c-3-4/c-3-4.html
+     20 /history/apollo/apollo-4/apollo-4-info.html
+     19 /shuttle/missions/sts-42/mission-sts-42.html
+     19 /shuttle/countdown/lps/c-9-10/c-9-10.html
+     19 /shuttle/countdown/lps/c-2/c-2.html
+     19 /mdss/shuttleproc.html
+     19 /history/apollo/apollo-6/apollo-6-info.html
+     19 /history/apollo/apollo-15/apollo-15-info.html
+     19 /history/apollo/a-001/a-001-info.html
+     18 /software/winvn/faq/WINVNFAQ-I-6.html
+     18 /shuttle/missions/sts-72/sts-72-info.html
+     18 /msfc/crew/crew.html
+     18 /history/apollo/as-201/as-201-info.html
+     18 /history/apollo/apollo-5/apollo-5-info.html
+     18 /facilities/vpf.html
+     17 /history/apollo/sa-3/sa-3.html
+     17 /history/apollo/sa-2/sa-2.html
+     17 /biomed/env.html
+     16 /shuttle/missions/sts-69/movies/movies.html
+     16 /history/apollo/pad-abort-test-1/pad-abort-test-1-info.htmlwelcome
+     16 /facts/faq08.html
+     16 /facts/faq06.html
+     15 /software/winvn/faq/WINVNFAQ-I-3.html
+     15 /shuttle/technology/sts-newsref/stsover-chron.html
+     15 /shuttle/technology/sts-newsref/sts-oalt.html
+     15 /shuttle/missions/sts-76/sts-76-info.html
+     15 /shuttle/countdown/lps/hsp/hsp.html
+     15 /shuttle/countdown/lps/ac/ac.html
+     15 /payloads/processing/paylproc.html
+     15 /history/gemini/gemini-viii/gemini-viii-info.html
+     14 /software/winvn/faq/WINVNFAQ-I-5.html
+     14 /shuttle/missions/sts-67/sts-67-info.html
+     14 /shuttle/countdown/lps/c-7-8/c-7-8.html
+     14 /mdss/ped/acs/ACS_homepage.html
+     14 /history/apollo/sa-4/sa-4.html
+     14 /facts/internet/bdgtti-1.01.html
+     14 /facilities/osb.html
+     13 /statistics/1995/Jul/Jul95_archive.html
+     13 /history/gemini/gemini-vii/gemini-vii-info.html
+     13 /history/gemini/gemini-2/gemini-2-info.html
+     13 /facts/faq13.html
+     13 /facts/faq03.html
+     12 /shuttle/technology/sts-newsref/sts-tps.html
+     12 /shuttle/technology/sts-newsref/stsover-landing.html
+     12 /shuttle/technology/sts-newsref/stsover-acronyms.html
+     12 /shuttle/missions/sts-70/sts-70-day-10-highlights.html
+     12 /shuttle/missions/sts-60/sts-60-info.html
+     12 /history/gemini/gemini-4/gemini-4-info.html
+     12 /facilities/lf.html
+     12 /~downs/home.html
+     11 /history/apollo/sa-9/sa-9.html
+     11 /history/apollo/sa-6/sa-6.html
+     11 /history/apollo/sa-5/sa-5.html
+     11 /history/apollo/pad-abort-test-2/pad-abort-test-2.html
+     11 /history/apollo/a-003/a-003.html
+     11 /history/apollo/a-002/a-002.html
+     10 /software/winvn/faq/WINVNFAQ-I-2.html
+     10 /shuttle/technology/sts-newsref/operations.html
+     10 /shuttle/missions/sts-77/sts-77-info.html
+     10 /shuttle/missions/sts-67/sts-67-day-14-highlights.html
+     10 /shuttle/missions/sts-67/sts-67-day-01-highlights.html
+     10 /history/apollo/sa-7/sa-7.html
+     10 /history/apollo/a-004/a-004.html
+     10 /facts/faq09.html
+     10 /facilities/cdsc.html
+      9 /software/winvn/faq/WINVNFAQ-I-7.html
+      9 /msfc/other.html
+      9 /history/gemini/gemini-v/gemini-v-info.html
+      9 /history/apollo/sa-8/sa-8.html
+      9 /history/apollo/sa-1/sa-1-info.html
+      8 /statistics/1995/Jun/Jun95_reverse_domains.html
+      8 /software/winvn/faq/WINVNFAQ-III-2.html
+      8 /software/winvn/faq/WINVNFAQ-I-4.html
+      8 /persons/nasa-cm/tnn.html
+      8 /msfc/description/description.html
+      8 /mdss/srqa/qpa/qpa.html
+      8 /history/gemini/gemini-x/gemini-x-info.html
+      8 /facilities/phsf.html
+      7 /statistics/1995/May/May95_archive.html
+      7 /statistics/1995/bkup/Apr95_full.html
+      7 /software/winvn/faq/WINVNFAQ-IV-3.html
+      7 /shuttle/missions/sts-68/sts-68-info.html
+      7 /shuttle/missions/sts-64/sts-64-info.html
+      7 /facts/faq02.html
+      7 /facilities/saef2.html
+      7 /facilities/letf.html
+      7 /base-ops/procurement/procurement.html
+      6 /statistics/1995/bkup/Feb95_full.html
+      6 /software/winvn/faq/WINVNFAQ-I-8.html
+      6 /shuttle/missions/sts-66/sts-66-info.html
+      6 /shuttle/missions/sts-59/sts-59-info.html
+      6 /shuttle/missions/41-d/41-d-info.html
+      6 /persons/people.html
+      6 /history/gemini/gemini-vi-a/gemini-vi-a-info.html
+      6 /history/gemini/gemini-ix-a/gemini-ix-a-info.html
+      6 /facts/internet/bdgtti-1.01_toc.html
+      6 /facts/faq.html
+      6 /facts/faq05.html
+      5 /software/winvn/faq/WINVNFAQ-IV-2.html
+      5 /software/winvn/faq/WINVNFAQ-III-3.html
+      5 /software/winvn/faq/WINVNFAQ-I.html
+      5 /software/winvn/faq/WINVNFAQ-I-11.html
+      5 /software/winvn/faq/WINVNFAQ.html
+      5 /shuttle/technology/sts-newsref/stsref-toc.html"
+      5 /shuttle/missions/sts-61/sts-61-info.html
+      5 /shuttle/missions/sts-4/sts-4-info.html
+      5 /shuttle/missions/sts-37/sts-37-info.html
+      5 /shuttle/missions/sts-34/sts-34-info.html
+      5 /shuttle/countdown/video/video.html
+      5 /persons/astronauts/u-to-z/VangenSD.html
+      5 /msfc/crew/food.html
+      5 /history/gemini/gemini-xi/gemini-xi-info.html
+      5 /history/apollo/sa-9/sa-9-info.html
+      5 /history/apollo/sa-6/sa-6-info.html
+      5 /facts/space_congress_95.html
+      5 /facilities/hmf.html
+      5 /facilities/cif.html
+      5 /biomed/history/history.html
+      4 /statistics/1995/Jul/Jul95_reverse_domains.html
+      4 /software/winvn/faq/WINVNFAQ-I-1.html
+      4 /software/winvn/faq/WINVNFAQ-I-10.html
+      4 /shuttle/technology/sts-newsref/stsover-mgt.html
+      4 /shuttle/missions/sts-8/sts-8-info.html
+      4 /shuttle/missions/sts-7/sts-7-info.html
+      4 /shuttle/missions/sts-67/sts-67-day-02-highlights.html
+      4 /shuttle/missions/sts-47/sts-47-info.html
+      4 /shuttle/missions/sts-2/sts-2-info.html
+      4 /persons/astronauts/a-to-d/DurranceST.html
+      4 /history/apollo/sa-3/sa-3-info.html
+      4 /history/apollo/pad-abort-test-2/pad-abort-test-2-info.html
+      4 /history/apollo/as-203/as-203-info.html
+      4 /history/apollo/a-002/a-002-info.html
+      4 /biomed/fire/fire.html
+      4 /biomed/climate/climate.html
+      3 /software/winvn/faq/WINVNFAQ-V-3.html
+      3 /software/winvn/faq/WINVNFAQ-III-5.html
+      3 /software/winvn/faq/WINVNFAQ-III-4.html
+      3 /shuttle/missions/sts-6/sts-6-info.html
+      3 /shuttle/missions/sts-67/sts-67-day-13-highlights.html
+      3 /shuttle/missions/sts-67/sts-67-day-10-highlights.html
+      3 /shuttle/missions/sts-67/sts-67-day-06-highlights.html
+      3 /shuttle/missions/sts-67/sts-67-day-03-highlights.html
+      3 /shuttle/missions/sts-65/sts-65-info.html
+      3 /shuttle/missions/sts-55/sts-55-info.html
+      3 /shuttle/missions/sts-54/sts-54-info.html
+      3 /shuttle/missions/sts-3/sts-3-info.html
+      3 /shuttle/missions/sts-27/sts-27-info.html
+      3 /shuttle/missions/sts-26/sts-26-info.html
+      3 /shuttle/missions/missions.html"
+      3 /shuttle/missions/51-l/mission-51-l.html/
+      3 /shuttle/missions/51-j/51-j-info.html
+      3 /shuttle/missions/41-c/41-c-info.html
+      3 /shuttle/countdown/liftoff.html"
+      3 /mdss/ped/acs/cmu.html
+      3 /home/faq.html
+      3 /history/apollo/sa-4/sa-4-info.html
+      3 /facts/facts.html"
+      3 /facilities/prf.html
+      3 /biomed/wetlands/wetlands.html
+      3 /biomed/threat/tande.html
+      3 /
+      2 /statistics/1995/Mar/Mar95_reverse_domains.html
+      2 /statistics/1995/Jan/Jan95_reverse_domains.html
+      2 /statistics/1995/Jan/Jan95.html
+      2 /statistics/1995/Jan/Jan95_archive.html
+      2 /statistics/1995/bkup/Jan95_full.html
+      2 /statistics/1994/Oct/Oct94_archive.html
+      2 /software/winvn/faq/WINVNFAQ-V.html
+      2 /software/winvn/faq/WINVNFAQ-V-7.html
+      2 /software/winvn/faq/WINVNFAQ-V-1.html
+      2 /software/winvn/brydon.html
+      2 /software/techdoc/td-Contents.html
+      2 /shuttle/technology/sts-newsref/sts_events.html
+      2 /shuttle/technology/sts-newsref/sts-cron-72.html
+      2 /shuttle/technology/sts-newsref/apu_mods.html
+      2 /shuttle/missions/sts-9/sts-9-info.html
+      2 /shuttle/missions/sts-70/mission-sts-70.html"
+      2 /shuttle/missions/sts-70/images/images1.html
+      2 /shuttle/missions/sts-67/sts-67-day-04-highlights.html
+      2 /shuttle/missions/sts-67/mission-sts-67a.html
+      2 /shuttle/missions/sts-62/sts-62-info.html
+      2 /shuttle/missions/sts-5/sts-5-info.html
+      2 /shuttle/missions/sts-56/sts-56-info.html
+      2 /shuttle/missions/sts-50/sts-50-info.html
+      2 /shuttle/missions/sts-43/sts-43-info.html
+      2 /shuttle/missions/sts-38/sts-38-info.html
+      2 /shuttle/missions/sts-35/sts-35-info.html
+      2 /shuttle/missions/sts-29/sts-29-info.html
+      2 /shuttle/missions/41-g/41-g-info.html
+      2 /shuttle/countdown/lps/mpeg.html
+      2 /shuttle/countdown/lps/consoles.html
+      2 /shuttle/countdown/count2.html
+      2 /persons/nasa-cm/hec.html
+      2 /payloads/processing/ppart2.html
+      2 /msfc/team/jsc.html
+      2 /msfc/description/shuttle/endeavour.html
+      2 /msfc/crew/lawrence.html
+      2 /msfc/crew/jernigan.html
+      2 /mdss/srqa/qpa/tools.html
+      2 /.ksc.html
+      2 /home/internet-search.html
+      2 /history/skylab/skylab.html"
+      2 /history/history.html"
+      2 /history/apollo/sa-8/sa-8-info.html
+      2 /history/apollo/sa-7/sa-7-info.html
+      2 /history/apollo/sa-5/sa-5-info.html
+      2 /history/apollo/as-202/as-202-info.html
+      2 /history/apollo/apollo-11/apollo-11.html/
+      2 /history/apollo/a-003/a-003-info.html
+      2 /facts/internet/url-primer.html
+      2 /biomed/vegetation/vegetation.html
+      2 /biomed/threat/animals.html
+      2 /biomed/soils/soils.html
+      2 /biomed/program.html
+      2 /biomed/glossary/glossary.html
+      2 /biomed/climate/airqual.html
+      1 /statistics/1995/May/May95.html
+      1 /statistics/1995/Mar/Mar95.html
+      1 /statistics/1995/Mar/Mar95_archive.html
+      1 /statistics/1995/Jun/ref.html
+      1 /statistics/1995/Jun/agent.html
+      1 /statistics/1995/bkup/Mar95.html
+      1 /statistics/1995/bkup/Apr95.html
+      1 /statistics/1994/Oct/Oct94.html
+      1 /statistics/1994/May/May94.html
+      1 /statistics/1994/Dec/Dec94_archive.html
+      1 /statistics/1994/Aug/Aug94_reverse_domains.html
+      1 /statistics/1993/Oct/Oct93_archive.html
+      1 /statistics/1993/Dec/Dec93.html
+      1 /software/winvn/winvn.html/
+      1 /software/winvn/faq/WINVNFAQ-V-6.html
+      1 /software/winvn/faq/WINVNFAQ-V-5.html
+      1 /software/winvn/faq/WINVNFAQ-V-4.html
+      1 /software/winvn/faq/WINVNFAQ-V-2.html
+      1 /software/winvn/faq/WINVNFAQ-IV.html
+      1 /software/winvn/faq/WINVNFAQ-III.html
+      1 /software/winvn/faq/WINVNFAQ-III-6.html
+      1 /software/winvn/faq/WINVNFAQ-II-1.html
+      1 /software/webadmin/faq.html
+      1 /software/techdoc/td-REV_.html
+      1 /shuttle/technology/sts-newsref/sts-comm.html
+      1 /shuttle/missions/sts-71/movies/movies.html"
+      1 /shuttle/missions/sts-71/mission-sts-74.html
+      1 /shuttle/missions/sts-71/mission-sts-71.html"
+      1 /shuttle/missions/sts-69/mission-sts-69.html"
+      1 /shuttle/missions/sts-67/sts-67-day-12-highlights.html
+      1 /shuttle/missions/sts-67/sts-67-day-11-highlights.html
+      1 /shuttle/missions/sts-67/sts-67-day-09-highlights.html
+      1 /shuttle/missions/sts-67/sts-67-day-08-highlights.html
+      1 /shuttle/missions/sts-67/sts-67-day-07-highlights.html
+      1 /shuttle/missions/sts-67/sts-67-day-05-highlights.html
+      1 /shuttle/missions/sts-58/sts-58-info.html
+      1 /shuttle/missions/sts-53/sts-53-info.html
+      1 /shuttle/missions/sts-49/sts-49-info.html
+      1 /shuttle/missions/sts-46/sts-46-info.html
+      1 /shuttle/missions/sts-44/sts-44-info.html
+      1 /shuttle/missions/sts-42/sts-42-info.html
+      1 /shuttle/missions/sts-41/sts-41-info.html
+      1 /shuttle/missions/sts-30/sts-30-info.html
+      1 /shuttle/missions/missions.html/
+      1 /shuttle/missions/61-b/61-b-info.html
+      1 /shuttle/missions/61-a/61-a-info.html
+      1 /shuttle/missions/51-d/mission-51-d.html/
+      1 /shuttle/missions/51-d/51-d-info.html
+      1 /shuttle/missions/51-c/mission-51-c.html/
+      1 /shuttle/missions/51-c/51-c-info.html
+      1 /shuttle/missions/51-b/51-b-info.html
+      1 /shuttle/missions/51-a/51-a-info.html
+      1 /shuttle/missions/41-c/mission-41-c.html/
+      1 /shuttle/missions/41-b/41-b-info.html
+      1 /shuttle/countdown/ocount.html
+      1 /shuttle/countdown/lps/fr.html"
+      1 /shuttle/countdown/liftoff.html/
+      1 /shuttle/countdown/liftoff71.html
+      1 /shuttle/countdown/countdown.html"
+      1 /procurement/procurement.html"
+      1 /persons/nasa-cm/smr.html
+      1 /persons/astronauts/m-to-p/PariseRA.html
+      1 /payloads/processing/ppart10.html
+      1 /msfc/team/nasa_team.html
+      1 /msfc/description/starview.html
+      1 /msfc/description/spacelab/spacelab.html
+      1 /msfc/crew/wannabe.html
+      1 /msfc/crew/vangen.html
+      1 /msfc/crew/trivia.html
+      1 /msfc/crew/patches.html
+      1 /msfc/crew/astronaut.html
+      1 /mdss/srqa/../MDSS.html
+      1 /home/whats-new.html
+      1 /home/welcome.html
+      1 /home/internet-directory.html
+      1 /home/guided-tour.html
+      1 /history/apollo/sa-2/sa-2-info.html
+      1 /history/apollo/apollo-7/apollo-7.html1
+      1 /history/apollo.apollo-13/apollo-13.html
+      1 /history//apollo/apollo-13/apollo-13.html
+      1 /history/apollo/a-004/a-004-info.html
+      1 /facts/wais-readme.html
+      1 /facts/internet/html-primer.html
+      1 /facts/internet/bdgtti-1.01_foot.html
+      1 /facts/faq10.html"
+      1 /facilities/tour.html"
+      1 /facilities/lc39a.html"
+      1 /facilities/canister.html
+      1 /biomed/vegetation/teresveg.html
+      1 /biomed/vegetation/scrub.html
+      1 /biomed/vegetation/hammock.html
+      1 /biomed/vegetation/aquatic.html
+      1 /biomed/threat/plants.html
+      1 /biomed/threat/manatee.html
+      1 /biomed/threat/indigo.html
+      1 /biomed/lan/lan6.html
+      1 /biomed/lan/lan4.html
+________________________________________________________________________________________________
+
+
+
+
+

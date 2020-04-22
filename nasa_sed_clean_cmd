@@ -1,0 +1,38 @@
+199.72.81.55 - - [01/Jul/1995:00:00:01 -0400] "GET /history/apollo/ HTTP/1.0" 200 6245
+unicomp6.unicomp.net - - [01/Jul/1995:00:00:06 -0400] "GET /shuttle/countdown/ HTTP/1.0" 200 3985
+199.120.110.21 - - [01/Jul/1995:00:00:09 -0400] "GET /shuttle/missions/sts-73/mission-sts-73.html HTTP/1.0" 200 4085
+burger.letters.com - - [01/Jul/1995:00:00:11 -0400] "GET /shuttle/countdown/liftoff.html HTTP/1.0" 304 0
+199.120.110.21 - - [01/Jul/1995:00:00:11 -0400] "GET /shuttle/missions/sts-73/sts-73-patch-small.gif HTTP/1.0" 200 4179
+burger.letters.com - - [01/Jul/1995:00:00:12 -0400] "GET /images/NASA-logosmall.gif HTTP/1.0" 304 0
+burger.letters.com - - [01/Jul/1995:00:00:12 -0400] "GET /shuttle/countdown/video/livevideo.gif HTTP/1.0" 200 0
+205.212.115.106 - - [01/Jul/1995:00:00:12 -0400] "GET /shuttle/countdown/countdown.html HTTP/1.0" 200 3985
+d104.aa.net - - [01/Jul/1995:00:00:13 -0400] "GET /shuttle/countdown/ HTTP/1.0" 200 3985
+129.94.144.152 - - [01/Jul/1995:00:00:13 -0400] "GET / HTTP/1.0" 200 7074
+___________________________________________________________________________________________________________________
+
+sed -i '/^[A-Za-z0-9]/d' NASA_access_log_Jul95
+sed 's/- -//g' test3 > NASA_access_log_Jul95 
+sed -i 's/- -//g' NASA_access_log_Jul95 
+sed -i  "/\b\(.Jpg\|.jpeg\|.gif\|.css\|.js\|.JPG\|.JPEG\|.GIF\|.CSS\|.JS\)\b/d" clarknet_access_log_Sep4
+sed -i  "/\b\(Jpg\|jpeg\|gif\|css\|js\|JPG\|JPEG\|GIF\|CSS\|JS\)\b/d" NASA_access_log_Jul95
+grep .JS NASA_access_log_Jul95 | wc -l 3
+__________________________________________________________________________________________________________
+create table july_nasa (host string,date_time string,time_zone string,method string,page string,http_reply string,bytes_reply string)
+ROW FORMAT DELIMITED   
+FIELDS TERMINATED BY ' '
+Lines terminated by '\n';   
+LOAD DATA INPATH 'hdfs:/nasa/NASA_access_log_Jul95' INTO TABLE july_nasa1;
+
+create table split as select host, method, split(method,'[/]')[0] get, split(method,'[/]')[1] page1, split(method,'[/]')[2] page2,split(method,'[/]')[3] page3,split(method,'[/]')[4] page4,split(method,'[/]')[5] page5, http_reply, bytes_reply, date_time, split(date_time,'[/]')[0] day, split(date_time,'[/]')[1] month, split(date_time,'[/:]')[2] year,split(date_time,'[//:]')[3] hour,split(date_time,'[//:]')[4] minit, split(date_time,'[//:-]')[5] second
+from ns2;
+__
+
+___________________________________________________________________________________________________________________________-
+hduser@castek-To-be-filled-by-O-E-M:~/jan_23$ cat 200ns | awk '{print $5}' | sort | uniq -c | sort -h -r 
+  11845 /ksc.html
+   4724 /shuttle/missions/missions.html
+   3480 /shuttle/countdown/liftoff.html
+   3107 /shuttle/missions/sts-70/mission-sts-70.html
+   2969 /shuttle/missions/sts-71/mission-sts-71.html
+__________________________________________________________________________________________________________________________
+ 
